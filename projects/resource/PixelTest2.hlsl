@@ -7,6 +7,7 @@ cbuffer CBParam : register(b0)
 // ----------------------------------------------------------
 // 頂点
 // ----------------------------------------------------------
+
 // カメラ定数バッファ
 cbuffer VSConstants : register(b8)
 {
@@ -18,7 +19,6 @@ cbuffer VSConstants : register(b8)
     float cameraFar;
     float4 time; // (t, dt, 1/dt, frameCount)
 };
-
 
 // 行列定数バッファ
 cbuffer VSConstants : register(b9)
@@ -34,29 +34,31 @@ struct VSInput
     float2 uv : TEXCOORD0;
 };
 
-// 頂点シェーダーから出力するデータ＝ピクセルシェーダーに入力するデータ
+// 頂点シェーダーから出力するデータ
+// ＝ピクセルシェーダーに入力するデータ
 struct PSInput
 {
     float4 posH : SV_Position; // 頂点の座標(射影座標系)
-    float3 posW : TEXCOORD0; // ワールド座標
-    half3 nrmW : TEXCOORD1; // ワールド法線
-    half2 uv : TEXCOORD2; // UV座標
+    float3 posW : TEXCOORD0;   // ワールド座標
+    half3 nrmW : TEXCOORD1;    // ワールド法線
+    half2 uv : TEXCOORD2;      // UV座標
 };
-
 
 // 頂点シェーダー
 PSInput VS(VSInput vin)
 {
     PSInput Out;
+
     float4 p = float4(vin.pos.xyz, 1);
+
     p = mul(world, p); // ワールド変換
-    Out.posW = (float3) p;
+    Out.posW = (float3)p;
 
     p = mul(view, p); // ビュー変換
     p = mul(projection, p); // プロジェクション変換
     Out.posH = p;
 
-    float3x3 world3x3 = (float3x3) world;
+    float3x3 world3x3 = (float3x3)world;
     Out.nrmW = mul(world3x3, vin.nrm);
 
     Out.uv = vin.uv;
@@ -64,10 +66,11 @@ PSInput VS(VSInput vin)
     return Out;
 }
 
- 
+
 // ----------------------------------------------------------
 // ピクセル
 // ----------------------------------------------------------
+
 // ライト
 cbuffer LightPerFrame : register(b11)
 {
@@ -76,12 +79,14 @@ cbuffer LightPerFrame : register(b11)
     float3 directionW;
     uint pad;
 };
+
 struct PointLight
 {
     float4 color;
     float3 positionW;
     float rangeInv;
 };
+
 struct SpotLight
 {
     float4 color;
@@ -90,44 +95,67 @@ struct SpotLight
     float3 directionW;
     float outerCos;
 };
+
 cbuffer LightPerObject : register(b12)
 {
     PointLight pointLights[8]; // 最大8個
-    SpotLight spotLights[8]; // 最大8個
+    SpotLight spotLights[8];   // 最大8個
+
     uint pointLightCount;
     uint spotLightCount;
     float2 _pad; // 16byte 境界合わせ
 };
 
-// テクスチャとサンプラ。4番のテクスチャスロットとサンプラスロットを使用（UNIDX_PS_SLOT_ALBEDO）
+// テクスチャとサンプラ
+// 4番のテクスチャスロットとサンプラスロットを使用
+// (UNIDX_PS_SLOT_ALBEDO)
 Texture2D texture0 : register(t4);
 SamplerState sampler0 : register(s4);
 
 
+// ----------------------------------------------------------
 // ピクセルシェーダー
+// ----------------------------------------------------------
 half4 PS(PSInput In) : SV_Target0
 {
     // テクスチャから色を取得
     half4 albedo = texture0.Sample(sampler0, In.uv);
 
-    // 明示的に法線を正規化（モデルスケール非均等だと崩れるため）
-    half3 N = normalize(In.nrmW);
+// 明示的に法線を正規化
+// モデルスケール非均等だと崩れるため
+half3 N = normalize(In.nrmW);
 
-    // ライトループ
-    half3 diffAccum = ambientColor; // 環境光
-    diffAccum += directionalColor * saturate(dot(N, -directionW)); // ディレクショナルライト
-    half NdotL, atten;
-    uint i;
+half3 L = -directionW;
 
-    // ポイントライト
-    [loop]
-    for (i = 0; i < pointLightCount; ++i)
-    {
-    }
+half3 V = normalize(cameraPosW - In.posW);
 
-    // カラー合成
-    half4 color = half4(diffAccum, 1) * albedo * (half4) baseColor;
+half3 H = normalize(L + V);
 
-    // 最終カラーを出力
-    return color;
+// ライトループ
+half3 diffAccum = ambientColor; // 環境光
+
+diffAccum += directionalColor * saturate(dot(N, L)); // ディレクショナルライト
+
+// ディレクショナルライトのスペキュラ
+half3 spec = 0;
+
+spec += directionalColor * pow(saturate(dot(N, H)), 100);
+
+half NdotL, atten;
+
+uint i;
+
+// ポイントライト
+[loop]
+for (i = 0; i < pointLightCount; ++i)
+{
+}
+
+// カラー合成
+half4 color = half4(diffAccum, 1) * albedo * (half4)baseColor;
+
+color += half4(spec, 1) * half4(baseColor);
+
+// 最終カラーを出力
+return color;
 }
