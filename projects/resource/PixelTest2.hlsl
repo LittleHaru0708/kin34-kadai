@@ -149,6 +149,19 @@ uint i;
 [loop]
 for (i = 0; i < pointLightCount; ++i)
 {
+    // ポイントライトのディフューズ
+    L = normalize(pointLights[i].positionW - In.posW);
+
+    NdotL = dot(N, L);
+
+    atten = 1 - (length(pointLights[i].positionW - In.posW) * pointLights[i].rangeInv);
+
+    diffAccum += pointLights[i].color * saturate(atten) * saturate(NdotL);
+
+    // ポイントライトのスペキュラ
+    H = normalize(L + V);
+
+    spec += pointLights[i].color * pow(saturate(dot(N, H)), 100);
 }
 
 // カラー合成
